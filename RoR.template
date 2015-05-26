@@ -79,108 +79,98 @@
       "Metadata" : {
         "AWS::CloudFormation::Init" : {
           "configSets" : {
-            "full_install" : [ "install_ruby", "install_application" ]
+            "default" : [ "install_cfn", "install_pkgs" ]
           },
-
-          "install_ruby" : {
-            "packages" : {
-              "yum" : {
-                "git"                 : [],
-                "wget"                : []
-              }
-            },
+          "install_cfn" : {
             "files" : {
-              "/.gemrc" : {
-              "content" : { "Fn::Join" : ["", [
-                  "gem: --no-ri --no-rdoc"
-              ]]},
-              "mode" : "000666",
-              "owner" : "root",
-              "group" : "root"
-              },
-
-              "/home/ec2-user/.gemrc" : {
-              "content" : { "Fn::Join" : ["", [
-                  "gem: --no-ri --no-rdoc"
-              ]]},
-              "mode" : "000666",
-              "owner" : "ec2-user",
-              "group" : "ec2-user"
+              "/etc/cfn/cfn-hup.conf" : {
+                "content" : { "Fn::Join" : ["", [
+                  "[main]\n",
+                  "stack=", { "Ref" : "AWS::StackId" }, "\n",
+                  "region=", { "Ref" : "AWS::Region" }, "\n"
+                ]]},
+                "mode"    : "000400",
+                "owner"   : "root",
+                "group"   : "root"
+          },
+              "/etc/cfn/hooks.d/cfn-auto-reloader.conf" : {
+                "content": { "Fn::Join" : ["", [
+                  "[cfn-auto-reloader-hook]\n",
+                  "triggers=post.update\n",
+                  "path=Resources.WebServer.Metadata.AWS::CloudFormation::Init\n",
+                  "action=/usr/bin/cfn-init -v ",
+                  "         --stack ", { "Ref" : "AWS::StackName" },
+                  "         --resource WebServer ",
+                  "         --configsets full_install ",
+                  "         --region ", { "Ref" : "AWS::Region" }, "\n",
+                  "runas=root\n"
+                ]]}
               }
-            },
-            "commands" : {
-              "02_epel_reg_download" : {
-                "command" : "wget http://download.qt-project.org/official_releases/qt/4.8/4.8.6/qt-everywhere-opensource-src-4.8.6.tar.gz",
-                "cwd" : "/tmp"
-              },
-              "03_extract_qt_source" : {
-                "command" : "cd /tmp; tar xvzf qt-everywhere-opensource-src-4.8.6.tar.gz",
-                "cwd" : "/tmp"
-              },
-              "04_configure_qt" : {
-                "command" : "cd /tmp/qt-everywhere-opensource-src-4.8.6; ./configure -confirm-license -release -opensource",
-                "cwd" : "/tmp/qt-everywhere-opensource-src-4.8.6"
-              },
-              "05_gmake_install_qt" : {
-                "command" : "gmake; gmake install",
-                "cwd" : "/tmp/qt-everywhere-opensource-src-4.8.6"
-              },
-              "06_update_alternatives_ruby" : {
-                "command" : "update-alternatives --set ruby /usr/bin/ruby5.2"
-              },
-              "07_gem_update_system" : {
-                "command" : "gem update --system"
-              }
-
             }
           },
 
-          "install_application" : {
-            "files" : {
-              "/tmp/install_application" : {
-                "content" : { "Fn::Join" : ["", [
-                  "#!/bin/bash -e\n",
-                  "export HOME=/home/ec2-user\n",
-                  "export PATH=$PATH:/usr/local/bin\n",
-                  "cd /home/ec2-user\n",
-
-                  "if pgrep ruby &> /dev/null ; then pkill -TERM ruby ; fi\n",
-
-                  "git clone https://github.com/mizue31/app01.git\n",
-                  "cd /home/ec2-user/app01\n"
-
-                ]]},
-                "mode"  : "000500",
-                "owner" : "root",
-                "group" : "root"
-              },
-              "/home/ec2-user/start-application" : {
-                "content" : { "Fn::Join" : ["", [
-                  "#!/bin/bash -e\n",
-                  "export HOME=/home/ec2-user\n",
-                  "export PATH=$PATH:/usr/local/bin\n",
-                  "cd /home/ec2-user/app01\n",
-
-                  "# Startup the application\n",
-                  "#rails server --binding 0.0.0.0 -p 80 -d\n"
-                ]]},
-                "mode"  : "000500",
-                "owner" : "root",
-                "group" : "root"
+          "install_pkgs" : {
+            "packages" : {
+              "yum" : {
+                "git"           : [],
+                "gcc"           : [],
+                "openssl-devel" : [],
+                "patch"         : [],
+                "sqlite-devel"  : [],
+                "gcc-c++"       : []
               }
             },
             "commands" : {
-              "01_install_application" : {
-                "command" : "/tmp/install_application > /var/log/install_application.log"
+              "01_rbenv" : {
+                "command" : "git clone https://github.com/sstephenson/rbenv.git /home/ec2-user/.rbenv"
               },
-              "02_configure_reboot" : {
-                "command" : "echo /home/ec2-user/start-application >> /etc/rc.local"
+              "02_rbenv" : {
+                "command" : "echo PATH=\\${HOME}/.rbenv/bin:\\${PATH} >> /home/ec2-user/.bash_profile"
               },
-              "03_start_application" : {
-                "command" : "/home/ec2-user/start-application"
+              "03_rbenv" : {
+                "command" : "echo export PATH >> /home/ec2-user/.bash_profile"
               },
-              "04_cleanup" : {
-                "command" : "rm /tmp/install_application"
+              "04_rubybuild" : {
+                "command" : "git clone https://github.com/sstephenson/ruby-build.git /home/ec2-user/.rbenv/plugins/ruby-build"
+              },
+              "05_chown" : {
+                "command" : "chown -R ec2-user:ec2-user /home/ec2-user/.rbenv"
+              },
+              "06_sed" : {
+                "command" : "sed -i 's/Defaults.*requiretty/# Defaults requiretty/' /etc/sudoers"
+              },
+              "07_rbenv_init" : {
+                "command" : "sudo -u ec2-user sh -c \"/home/ec2-user/.rbenv/bin/rbenv init - >> /home/ec2-user/.bash_profile\""
+              },
+              "08_rbenv_install_ruby" : {
+                "command" : "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; rbenv install 2.2.2; rbenv global 2.2.2; ruby -v\""
+              },
+              "09_gem_install" : {
+                "command" : "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; gem install --no-ri --no-rdoc rails\""
+              },
+              "10_epel" : {
+                "command" : "wget http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm; rpm -Uvh epel-release-latest-7.noarch.rpm"
+              },
+              "11_qtwebkit" : {
+                "command" : "yum install -y qtwebkit-devel; ln -s /usr/bin/qmake-qt4 /usr/bin/qmake"
+              },
+              "12_clone_app01" : {
+                "command" : "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; git clone https://github.com/mizue31/app01.git\""
+              },
+              "13_bundle_install" : {
+                "command" : "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; cd app01; bundle install --without production\""
+              },
+              "14_exec_rake" : {
+                "command" : "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; cd app01; bundle exec rake db:migrate; bundle exec rake db:seed\""
+              },
+              "15_heroku_toolbelt" : {
+                "command" : "wget -qO- https://toolbelt.heroku.com/install.sh | sh"
+              },
+              "16_set_path_for_heroku" : {
+                "command" : "echo PATH=/usr/local/heroku/bin:\\${PATH} >> /home/ec2-user/.bash_profile; echo export PATH >> /home/ec2-user/.bash_profile"
+              },
+              "17_src_bash_profile" : {
+                "command" : "sudo -u ec2-user sh -c \"source /home/ec2-user/.bash_profile; /usr/local/heroku/bin/heroku version\""
               }
             }
           }
@@ -196,33 +186,20 @@
           "#!/bin/bash -xe\n",
           "yum -y update\n",
           "yum install -y wget\n",
-          "yum install -y git\n",
-          "yum install -y gcc\n",
-          "yum install -y openssl-devel\n",
-          "yum install -y patch\n",
-          "yum install -y sqlite-devel\n",
-          "yum install -y gcc-c++\n",
-          "git clone https://github.com/sstephenson/rbenv.git /home/ec2-user/.rbenv\n",
-          "echo PATH=\\${HOME}/.rbenv/bin:\\${PATH} >> /home/ec2-user/.bash_profile\n",
-          "echo export PATH >> /home/ec2-user/.bash_profile\n",
-          "git clone https://github.com/sstephenson/ruby-build.git /home/ec2-user/.rbenv/plugins/ruby-build\n",
-          "chown -R ec2-user:ec2-user /home/ec2-user/.rbenv\n",
-          "sed -i 's/Defaults.*requiretty/# Defaults requiretty/' /etc/sudoers\n",
-          "sudo -u ec2-user sh -c \"/home/ec2-user/.rbenv/bin/rbenv init - >> /home/ec2-user/.bash_profile\"\n",
-          "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; rbenv install 2.2.2; rbenv global 2.2.2; ruby -v\"\n",
-          "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; gem install --no-ri --no-rdoc rails\"\n",
-          "wget http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm\n",
-          "rpm -Uvh epel-release-latest-7.noarch.rpm\n",
-          "yum install -y qtwebkit-devel\n",
-          "ln -s /usr/bin/qmake-qt4 /usr/bin/qmake\n",
-          "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; git clone https://github.com/mizue31/app01.git\"\n",
-          "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; cd app01; bundle install --without production\"\n",
-          "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; cd app01; bundle exec rake db:migrate; bundle exec rake db:seed\"\n",
-          "wget -qO- https://toolbelt.heroku.com/install.sh | sh\n",
-          "echo PATH=/usr/local/heroku/bin:\\${PATH} >> /home/ec2-user/.bash_profile\n",
-          "echo export PATH >> /home/ec2-user/.bash_profile\n",
-          "sudo -u ec2-user sh -c \"source /home/ec2-user/.bash_profile; /usr/local/heroku/bin/heroku version\"\n",
+          "wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\n",
+          "tar xvzf aws-cfn-bootstrap-latest.tar.gz\n",
+          "easy_install aws-cfn-bootstrap-1.4\n",
+          "cfn-init -v ",
+          "   --stack   ", {"Ref" : "AWS::StackId"},
+          "   --resource WebServer ",
+          "   --region  ", {"Ref" : "AWS::Region" }, "\n",
+          "cfn-signal -e 0 --stack ", { "Ref" : "AWS::StackName" }, 
+          "     --resource WebServer", 
+          "     -r \"Webserver Instance Launched\" ", 
+          "     --region ", { "Ref" : "AWS::Region" }, "\n", 
+          "cfn-signal -e 0 -r \"WebServer setup completed\" '", {"Ref" : "WaitHandle" }, "'\n",
           "echo ##### Ending User Data #####\n"
+
         ]]}}        
       },
       "CreationPolicy" : {
@@ -237,7 +214,7 @@
       "Properties" : {
         "GroupDescription" : "Enable HTTP and SSH access",
         "SecurityGroupIngress" : [
-          {"IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0"},
+          {"IpProtocol" : "tcp", "FromPort" : "3000", "ToPort" : "3000", "CidrIp" : "0.0.0.0/0"},
           {"IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : { "Ref" : "SSHLocation"}}
         ]
       }
