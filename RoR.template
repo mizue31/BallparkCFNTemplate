@@ -1,0 +1,265 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  
+  "Description" : "AWS CloudFormation Template Ruby on Rails Single Instance: Create a Ruby on Rails stack using a single EC2 instance with a local SQLite3 database for storage. This template demonstrates using the AWS CloudFormation bootstrap scripts to install the packages and files necessary to deploy a Rails application. This example clone ballpark estimation application from GitHub. This template creates an Amazon EC2 instance. You will be billed for the AWS resources used if you create a stack from this template.",
+  
+  "Parameters" : {
+      
+    "KeyName": {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "ConstraintDescription" : "must be the name of an existing EC2 KeyPair."
+    },
+
+    "InstanceType" : {
+      "Description" : "WebServer EC2 instance type",
+      "Type" : "String",
+      "Default" : "t2.micro",
+      "AllowedValues" : [ "t2.micro", "t2.small", "t2.medium", "m3.medium", "m3.large", "m3.xlarge", "m3.2xlarge", "c3.large", "c3.xlarge", "c3.2xlarge", "c3.4xlarge", "c3.8xlarge", "r3.large", "r3.xlarge", "r3.2xlarge", "r3.4xlarge", "r3.8xlarge", "i2.xlarge", "i2.2xlarge", "i2.4xlarge", "i2.8xlarge", "d2.xlarge", "d2.2xlarge", "d2.4xlarge", "d2.8xlarge" ]
+,
+      "ConstraintDescription" : "must be a valid EC2 instance type."
+    },
+
+    "SSHLocation" : {
+      "Description" : " The IP address range that can be used to SSH to the EC2 instances",
+      "Type": "String",
+      "MinLength": "9",
+      "MaxLength": "18",
+      "Default": "0.0.0.0/0",
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+      "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
+    } 
+  },
+  
+  "Mappings" : {
+    "AWSInstanceType2Arch" : {
+      "t2.micro"    : { "Arch" : "HVM64"  },
+      "t2.small"    : { "Arch" : "HVM64"  },
+      "t2.medium"   : { "Arch" : "HVM64"  },
+      "m3.medium"   : { "Arch" : "HVM64"  },
+      "m3.large"    : { "Arch" : "HVM64"  },
+      "m3.xlarge"   : { "Arch" : "HVM64"  },
+      "m3.2xlarge"  : { "Arch" : "HVM64"  },
+      "c3.large"    : { "Arch" : "HVM64"  },
+      "c3.xlarge"   : { "Arch" : "HVM65"  },
+      "c3.2xlarge"  : { "Arch" : "HVM64"  },
+      "c3.4xlarge"  : { "Arch" : "HVM64"  },
+      "c3.8xlarge"  : { "Arch" : "HVM64"  },
+      "r3.large"    : { "Arch" : "HVM64"  },
+      "r3.xlarge"   : { "Arch" : "HVM64"  },
+      "r3.2xlarge"  : { "Arch" : "HVM64"  },
+      "r3.4xlarge"  : { "Arch" : "HVM64"  },
+      "r3.8xlarge"  : { "Arch" : "HVM64"  },
+      "i2.xlarge"   : { "Arch" : "HVM64"  },
+      "i2.2xlarge"  : { "Arch" : "HVM64"  },
+      "i2.4xlarge"  : { "Arch" : "HVM64"  },
+      "i2.8xlarge"  : { "Arch" : "HVM64"  },
+      "d2.xlarge"   : { "Arch" : "HVM64"  },
+      "d2.2xlarge"  : { "Arch" : "HVM64"  },
+      "d2.4xlarge"  : { "Arch" : "HVM64"  },
+      "d2.8xlarge"  : { "Arch" : "HVM64"  }
+    }
+,
+    "AWSRegionArch2AMI" : {
+      "us-east-1"        : {"PV64" : "ami0ccae774", "HVM64" : "ami-12663b7a", "HVMG2" : "ami-8c6b40e4"},
+      "us-west-2"        : {"PV64" : "ami-ff527ecf", "HVM64" : "ami-4dbf9e7d", "HVMG2" : "ami-abbe919b"},
+      "us-west-1"        : {"PV64" : "ami-d514f291", "HVM64" : "ami-a540a5e1", "HVMG2" : "ami-f31ffeb7"},
+      "eu-west-1"        : {"PV64" : "ami-bf0897c8", "HVM64" : "ami-25158352", "HVMG2" : "ami-d5bc24a2"},
+      "eu-central-1"     : {"PV64" : "ami-ac221fb1", "HVM64" : "ami-dafdcfc7", "HVMG2" : "ami-7cd2ef61"},
+      "ap-northeast-1"   : {"PV64" : "ami-27f90e27", "HVM64" : "ami-b1b458b1", "HVMG2" : "ami-6318e863"},
+      "ap-southeast-1"   : {"PV64" : "ami-acd9e8fe", "HVM64" : "ami-dc1c2b8e", "HVMG2" : "ami-3807376a"},
+      "ap-southeast-2"   : {"PV64" : "ami-ff9cecc5", "HVM64" : "ami-d3daace9", "HVMG2" : "ami-89790ab3"},
+      "sa-east-1"        : {"PV64" : "ami-bb2890a6", "HVM64" : "ami-09e25b14", "HVMG2" : "NOT_SUPPORTED"}
+    }
+  },
+
+  "Resources" : {
+    "WebServer": {  
+      "Type": "AWS::EC2::Instance",
+      "Metadata" : {
+        "AWS::CloudFormation::Init" : {
+          "configSets" : {
+            "full_install" : [ "install_ruby", "install_application" ]
+          },
+
+          "install_ruby" : {
+            "packages" : {
+              "yum" : {
+                "git"                 : [],
+                "wget"                : []
+              }
+            },
+            "files" : {
+              "/.gemrc" : {
+              "content" : { "Fn::Join" : ["", [
+                  "gem: --no-ri --no-rdoc"
+              ]]},
+              "mode" : "000666",
+              "owner" : "root",
+              "group" : "root"
+              },
+
+              "/home/ec2-user/.gemrc" : {
+              "content" : { "Fn::Join" : ["", [
+                  "gem: --no-ri --no-rdoc"
+              ]]},
+              "mode" : "000666",
+              "owner" : "ec2-user",
+              "group" : "ec2-user"
+              }
+            },
+            "commands" : {
+              "02_epel_reg_download" : {
+                "command" : "wget http://download.qt-project.org/official_releases/qt/4.8/4.8.6/qt-everywhere-opensource-src-4.8.6.tar.gz",
+                "cwd" : "/tmp"
+              },
+              "03_extract_qt_source" : {
+                "command" : "cd /tmp; tar xvzf qt-everywhere-opensource-src-4.8.6.tar.gz",
+                "cwd" : "/tmp"
+              },
+              "04_configure_qt" : {
+                "command" : "cd /tmp/qt-everywhere-opensource-src-4.8.6; ./configure -confirm-license -release -opensource",
+                "cwd" : "/tmp/qt-everywhere-opensource-src-4.8.6"
+              },
+              "05_gmake_install_qt" : {
+                "command" : "gmake; gmake install",
+                "cwd" : "/tmp/qt-everywhere-opensource-src-4.8.6"
+              },
+              "06_update_alternatives_ruby" : {
+                "command" : "update-alternatives --set ruby /usr/bin/ruby5.2"
+              },
+              "07_gem_update_system" : {
+                "command" : "gem update --system"
+              }
+
+            }
+          },
+
+          "install_application" : {
+            "files" : {
+              "/tmp/install_application" : {
+                "content" : { "Fn::Join" : ["", [
+                  "#!/bin/bash -e\n",
+                  "export HOME=/home/ec2-user\n",
+                  "export PATH=$PATH:/usr/local/bin\n",
+                  "cd /home/ec2-user\n",
+
+                  "if pgrep ruby &> /dev/null ; then pkill -TERM ruby ; fi\n",
+
+                  "git clone https://github.com/mizue31/app01.git\n",
+                  "cd /home/ec2-user/app01\n"
+
+                ]]},
+                "mode"  : "000500",
+                "owner" : "root",
+                "group" : "root"
+              },
+              "/home/ec2-user/start-application" : {
+                "content" : { "Fn::Join" : ["", [
+                  "#!/bin/bash -e\n",
+                  "export HOME=/home/ec2-user\n",
+                  "export PATH=$PATH:/usr/local/bin\n",
+                  "cd /home/ec2-user/app01\n",
+
+                  "# Startup the application\n",
+                  "#rails server --binding 0.0.0.0 -p 80 -d\n"
+                ]]},
+                "mode"  : "000500",
+                "owner" : "root",
+                "group" : "root"
+              }
+            },
+            "commands" : {
+              "01_install_application" : {
+                "command" : "/tmp/install_application > /var/log/install_application.log"
+              },
+              "02_configure_reboot" : {
+                "command" : "echo /home/ec2-user/start-application >> /etc/rc.local"
+              },
+              "03_start_application" : {
+                "command" : "/home/ec2-user/start-application"
+              },
+              "04_cleanup" : {
+                "command" : "rm /tmp/install_application"
+              }
+            }
+          }
+        }
+      },
+      "Properties": {
+        "ImageId" : { "Fn::FindInMap" : [ "AWSRegionArch2AMI", { "Ref" : "AWS::Region" },
+                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "InstanceType" }, "Arch" ] } ] },
+        "InstanceType"   : { "Ref" : "InstanceType" },
+        "SecurityGroups" : [ {"Ref" : "WebServerSecurityGroup"} ],
+        "KeyName"        : { "Ref" : "KeyName" },
+        "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+          "#!/bin/bash -xe\n",
+          "yum -y update\n",
+          "yum install -y wget\n",
+          "yum install -y git\n",
+          "yum install -y gcc\n",
+          "yum install -y openssl-devel\n",
+          "yum install -y patch\n",
+          "yum install -y sqlite-devel\n",
+          "yum install -y gcc-c++\n",
+          "git clone https://github.com/sstephenson/rbenv.git /home/ec2-user/.rbenv\n",
+          "echo PATH=\\${HOME}/.rbenv/bin:\\${PATH} >> /home/ec2-user/.bash_profile\n",
+          "echo export PATH >> /home/ec2-user/.bash_profile\n",
+          "git clone https://github.com/sstephenson/ruby-build.git /home/ec2-user/.rbenv/plugins/ruby-build\n",
+          "chown -R ec2-user:ec2-user /home/ec2-user/.rbenv\n",
+          "sed -i 's/Defaults.*requiretty/# Defaults requiretty/' /etc/sudoers\n",
+          "sudo -u ec2-user sh -c \"/home/ec2-user/.rbenv/bin/rbenv init - >> /home/ec2-user/.bash_profile\"\n",
+          "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; rbenv install 2.2.2; rbenv global 2.2.2; ruby -v\"\n",
+          "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; gem install --no-ri --no-rdoc rails\"\n",
+          "wget http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm\n",
+          "rpm -Uvh epel-release-latest-7.noarch.rpm\n",
+          "yum install -y qtwebkit-devel\n",
+          "ln -s /usr/bin/qmake-qt4 /usr/bin/qmake\n",
+          "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; git clone https://github.com/mizue31/app01.git\"\n",
+          "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; cd app01; bundle install --without production\"\n",
+          "sudo -u ec2-user sh -c \"cd /home/ec2-user; source ./.bash_profile; cd app01; bundle exec rake db:migrate; bundle exec rake db:seed\"\n",
+          "wget -qO- https://toolbelt.heroku.com/install.sh | sh\n",
+          "echo PATH=/usr/local/heroku/bin:\\${PATH} >> /home/ec2-user/.bash_profile\n",
+          "echo export PATH >> /home/ec2-user/.bash_profile\n",
+          "sudo -u ec2-user sh -c \"source /home/ec2-user/.bash_profile; /usr/local/heroku/bin/heroku version\"\n",
+          "echo ##### Ending User Data #####\n"
+        ]]}}        
+      },
+      "CreationPolicy" : {
+        "ResourceSignal" : {
+          "Timeout" : "PT60M"
+        }
+      }
+    },
+    
+    "WebServerSecurityGroup" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Enable HTTP and SSH access",
+        "SecurityGroupIngress" : [
+          {"IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0"},
+          {"IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : { "Ref" : "SSHLocation"}}
+        ]
+      }
+    },
+    "WaitHandle" : {
+      "Type" : "AWS::CloudFormation::WaitConditionHandle"
+    },
+    "WaitCondition" : {
+      "Type" : "AWS::CloudFormation::WaitCondition",
+      "DependsOn" : "WebServer",
+      "Properties" : {
+        "Handle" : { "Ref" : "WaitHandle" },
+        "Timeout" : "3000"
+      }
+    }
+  },
+  
+  "Outputs" : {
+    "WebsiteURL" : {
+      "Value" : { "Fn::Join" : ["", ["http://", { "Fn::GetAtt" : [ "WebServer", "PublicDnsName" ]}, "/notes" ]] },
+      "Description" : "URL for newly created Rails application"
+    }
+  }
+}
+
